@@ -1,0 +1,60 @@
+name: Update NGFS Data (CIMSS/SSEC SCENE)
+
+# CADENCE: same self-re-dispatching loop pattern as firestorm-goes-fire-data
+# and firestorm-lightning-data. GHA `schedule` is throttled to ~hourly on
+# free runners. NGFS-SCENE publishes a fresh frame every ~2 min. We deliberately
+# do NOT poll at 2-min cadence — that's hammering SSEC. Instead we fetch every
+# ~5 min in a 4-pass loop and re-dispatch self at the end. Plenty fresh for
+# operator situational awareness, polite to SSEC.
+#
+# Public repo → unlimited free GHA minutes. Degrades to schedule-only if
+# self-dispatch is ever rate-limited.
+on:
+  schedule:
+    - cron: '*/5 * * * *'        # dead-man restart only; real cadence is the self-loop
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write                 # self re-dispatch
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: update-ngfs
+      cancel-in-progress: false
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # Standard library only — handshake + HTTP via urllib, no extra deps.
+
+      - name: Fetch NGFS in a ~5-min loop (~80s cadence × 4 passes)
+        run: |
+          git config user.name  'firestorm-bot'
+          git config user.email 'firestorm-bot@users.noreply.github.com'
+          for i in 1 2 3 4; do
+            echo "=== fetch iteration $i/4 ($(date -u +%H:%M:%S)Z) ==="
+            python fetch_ngfs.py || echo "iteration $i fetch failed (continuing)"
+            git add data/ngfs.json
+            if git diff --cached --quiet; then
+              echo 'No change this iteration'
+            else
+              git commit -m "ngfs update $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+              git pull --rebase --autostash origin main || true
+              git push || echo "push failed iteration $i (retry next)"
+            fi
+            if [ "$i" -lt 4 ]; then sleep 80; fi
+          done
+
+      - name: Re-dispatch self
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run update-ngfs.yml --ref main || echo "re-dispatch failed; schedule will restart the chain"
