@@ -112,8 +112,7 @@ session-tracking mechanism, not a deny gate. Implementation in
 - **Polite cadence.** Don't drop the loop sleep below ~80 s.
 - **Track A pending.** We've emailed SSEC asking for their documented RealEarth
   API path with a key. If they grant it, swap the handshake for that path
-  (cleaner, future-proof against any handshake change). Email + plan in the
-  FIRESTORM repo's [`NGFS_INTEGRATION_PLAN.md`](https://github.com/Deasus/Firestorm/blob/dev/NGFS_INTEGRATION_PLAN.md).
+  (cleaner, future-proof against any handshake change). Email + plan live in the FIRESTORM main-app repo (private).
 - **If the handshake breaks** (SSEC config-pushes a stricter gate): pause the
   workflow, capture viewer traffic with Playwright again, update
   `_make_session()`. Frontend stays unchanged because data shape is ours, not
